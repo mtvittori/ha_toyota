@@ -14,7 +14,7 @@ from homeassistant.helpers import selector
 from pytoyoda.client import MyT
 from pytoyoda.exceptions import ToyotaInvalidUsernameError, ToyotaLoginError
 
-from .const import CONF_BRAND, CONF_METRIC_VALUES, DOMAIN
+from .const import CONF_BRAND, CONF_METRIC_VALUES, CONF_POLLING_INTERVAL, DEFAULT_POLLING_INTERVAL, DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -30,10 +30,48 @@ BRAND_API_MAP = {
 }
 
 
+class ToyotaOptionsFlow(config_entries.OptionsFlow):
+    """Handle Toyota options (polling interval)."""
+
+    async def async_step_init(self, user_input: dict | None = None) -> Any:  # noqa: ANN401
+        """Manage the options."""
+        if user_input is not None:
+            return self.async_create_entry(title="", data=user_input)
+
+        current_interval = self.config_entry.options.get(
+            CONF_POLLING_INTERVAL, DEFAULT_POLLING_INTERVAL
+        )
+
+        return self.async_show_form(
+            step_id="init",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_POLLING_INTERVAL, default=current_interval
+                    ): selector.NumberSelector(
+                        selector.NumberSelectorConfig(
+                            min=0,
+                            max=1440,
+                            step=1,
+                            unit_of_measurement="min",
+                            mode=selector.NumberSelectorMode.BOX,
+                        )
+                    ),
+                }
+            ),
+            description_placeholders={"note": "0 = manual polling only"},
+        )
+
+
 class ToyotaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # pylint: disable=W0223
     """Handle a config flow for Toyota Connected Services."""
 
     VERSION = 1
+
+    @staticmethod
+    def async_get_options_flow(config_entry: config_entries.ConfigEntry) -> ToyotaOptionsFlow:
+        """Return the options flow handler."""
+        return ToyotaOptionsFlow()
 
     def __init__(self) -> None:
         """Start the toyota custom component config flow."""

@@ -19,9 +19,11 @@ ISSUES_URL = "https://github.com/pytoyoda/ha_toyota/issues"
 CONF_BRAND = "Brand"
 CONF_BRAND_MAPPING = {"T": "Toyota", "L": "Lexus"}
 CONF_METRIC_VALUES = "use_metric_values"
+CONF_POLLING_INTERVAL = "polling_interval"
 
 # DEFAULTS
 DEFAULT_LOCALE = "en-gb"
+DEFAULT_POLLING_INTERVAL = 6  # minutes; 0 = manual only
 
 # DATA COORDINATOR ATTRIBUTES
 BUCKET = "bucket"

@@ -19,7 +19,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from loguru import logger
 from pydantic import ValidationError
 
-from .const import CONF_BRAND, CONF_METRIC_VALUES, DOMAIN, PLATFORMS, STARTUP_MESSAGE
+from .const import CONF_BRAND, CONF_METRIC_VALUES, CONF_POLLING_INTERVAL, DEFAULT_POLLING_INTERVAL, DOMAIN, PLATFORMS, STARTUP_MESSAGE
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -146,9 +146,19 @@ async def async_setup_entry(  # pylint: disable=too-many-statements # noqa: PLR0
             if vehicles:
                 for vehicle in vehicles:
                     if vehicle:
-                        await hass.async_add_executor_job(
-                            _run_pytoyoda_sync, vehicle.update()
-                        )
+                        try:
+                            await hass.async_add_executor_job(
+                                _run_pytoyoda_sync, vehicle.update()
+                            )
+                        except ToyotaApiError as ex:
+                            _LOGGER.warning(
+                                "Transient API error during vehicle update (will use partial data): %s",
+                                ex,
+                            )
+                        except ToyotaInternalError as ex:
+                            _LOGGER.debug(
+                                "Internal API error during vehicle update: %s", ex
+                            )
                         vehicle_data = VehicleData(
                             data=vehicle, statistics=None, metric_values=metric_values
                         )
@@ -209,21 +219,37 @@ async def async_setup_entry(  # pylint: disable=too-many-statements # noqa: PLR0
             raise UpdateFailed(msg) from ex
         return None
 
+    polling_interval_minutes = entry.options.get(CONF_POLLING_INTERVAL, DEFAULT_POLLING_INTERVAL)
+    update_interval = (
+        timedelta(minutes=polling_interval_minutes) if polling_interval_minutes > 0 else None
+    )
+    if update_interval is None:
+        _LOGGER.info("Toyota: automatic polling disabled, using manual refresh only")
+    else:
+        _LOGGER.info("Toyota: polling interval set to %d minutes", polling_interval_minutes)
+
     coordinator = DataUpdateCoordinator(
         hass,
         _LOGGER,
         name=DOMAIN,
         update_method=async_get_vehicle_data,
-        update_interval=timedelta(seconds=360),
+        update_interval=update_interval,
     )
 
     await coordinator.async_config_entry_first_refresh()
 
     hass.data[DOMAIN][entry.entry_id] = coordinator
 
+    entry.async_on_unload(entry.add_update_listener(_async_update_options))
+
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
     return True
+
+
+async def _async_update_options(hass: HomeAssistant, entry) -> None:
+    """Reload the integration when options change."""
+    await hass.config_entries.async_reload(entry.entry_id)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
